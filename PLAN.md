@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Node.js/TypeScript Telegram bot that aggregates crypto news from RSS feeds, Telegram channels, and APIs, filters them through Qwen LLM via OpenRouter, and publishes important news to a Telegram channel.
+A Node.js/TypeScript Telegram bot that aggregates crypto news from RSS feeds, Telegram channels, and APIs, filters them through an LLM via OpenRouter, and publishes important news to a Telegram channel.
 
 ---
 
@@ -140,9 +140,9 @@ TELEGRAM_API_HASH=your_api_hash_here
 TELEGRAM_PHONE=+79001234567
 TELEGRAM_SESSION=StringSession_value_here
 
-# OpenRouter API (Qwen LLM)
+# OpenRouter API (LLM)
 OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx
-OPENROUTER_MODEL=qwen/qwen-2.5-72b-instruct:free
+OPENROUTER_MODEL=minimax/minimax-m2.5:free
 
 # CryptoPanic API
 CRYPTOPANIC_TOKEN=your_token_here
@@ -311,7 +311,7 @@ export const config: AppConfig = {
   },
   openRouter: {
     apiKey: requireEnv('OPENROUTER_API_KEY'),
-    model: optionalEnv('OPENROUTER_MODEL', 'qwen/qwen-2.5-72b-instruct:free'),
+    model: optionalEnv('OPENROUTER_MODEL', 'minimax/minimax-m2.5:free'),
   },
   cryptoPanic: {
     token: optionalEnv('CRYPTOPANIC_TOKEN', ''),
@@ -1419,7 +1419,7 @@ feat: implement Telegram userbot channel reader via gramjs
 ## Phase 6: LLM Filter
 
 ### Goal
-Send unprocessed articles to Qwen via OpenRouter, get relevance scores, category classification, and Russian summaries.
+Send unprocessed articles to the LLM via OpenRouter, get relevance scores, category classification, and Russian summaries.
 
 ### Exact LLM Prompt Template
 
@@ -1603,7 +1603,7 @@ interface OpenRouterResponse {
 }
 
 /**
- * Sends a single article to Qwen via OpenRouter for relevance filtering.
+ * Sends a single article to the LLM via OpenRouter for relevance filtering.
  * Returns null if the LLM call fails or returns invalid data.
  * Implements retry logic with 1 retry on failure.
  */
@@ -1762,7 +1762,7 @@ const llmRequest: LLMFilterRequest = {
 ### Phase 6 Commit Message
 
 ```
-feat: implement Qwen LLM filter via OpenRouter with scoring and Russian summaries
+feat: implement LLM filter via OpenRouter with scoring and Russian summaries
 
 - Add filterArticleWithLLM() with exact system prompt for category/score/summary
 - Add parseAndValidateLLMResponse() with JSON extraction from markdown blocks
@@ -2377,7 +2377,7 @@ services:
       - key: TELEGRAM_INTERVAL_MINUTES
         value: "5"
       - key: OPENROUTER_MODEL
-        value: qwen/qwen-2.5-72b-instruct:free
+        value: minimax/minimax-m2.5:free
 ```
 
 #### `.env.example` — добавить PORT
@@ -2393,7 +2393,7 @@ PORT=3000
 
 Crypto news aggregator — filters signal from noise, publishes to Telegram.
 
-Collects from RSS feeds, Telegram channels, and APIs. Filters through Qwen LLM via OpenRouter. Publishes important news in Russian to a Telegram channel.
+Collects from RSS feeds, Telegram channels, and APIs. Filters through an LLM via OpenRouter. Publishes important news in Russian to a Telegram channel.
 
 ## Category Legend
 
@@ -2492,7 +2492,7 @@ Starting orchestrator...
 | `RSS_INTERVAL_MINUTES` | RSS polling interval | `15` |
 | `API_INTERVAL_MINUTES` | API polling interval | `10` |
 | `TELEGRAM_INTERVAL_MINUTES` | Telegram channels polling | `5` |
-| `OPENROUTER_MODEL` | Qwen model on OpenRouter | `qwen/qwen-2.5-72b-instruct:free` |
+| `OPENROUTER_MODEL` | Qwen model on OpenRouter | `minimax/minimax-m2.5:free` |
 
 ## Monitoring
 
@@ -2577,6 +2577,6 @@ feat: add Render.com deployment config and keep-alive health server
 
 - `/src/types/index.ts` — All shared TypeScript interfaces that every other module depends on; must be implemented first and exactly as specified
 - `/src/database/index.ts` — SQLite schema, all CRUD functions, and deduplication logic; the central persistence layer
-- `/src/llm/filter.ts` — Qwen LLM integration with exact prompt template, JSON validation, and rate limiting
+- `/src/llm/filter.ts` — LLM integration with exact prompt template, JSON validation, and rate limiting
 - `/src/orchestrator/index.ts` — Main entry point wiring all phases together with cron scheduling and graceful shutdown
 - `/src/collectors/telegram.ts` — gramjs userbot authentication and channel reading; requires manual one-time setup before headless operation
