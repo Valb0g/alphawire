@@ -2061,218 +2061,116 @@ import { LLMFilterRequest } from '../types/index.js';
 // ORCHESTRATOR STATE
 // ============================================================
 
-let isRssRunning = false;
-let isApiRunning = false;
-let isTelegramRunning = false;
-let isLlmRunning = false;
-let isPublishRunning = false;
-
-// ============================================================
-// COLLECTION PIPELINE
-// ============================================================
-
-/**
- * Collects from RSS feeds and inserts new articles into DB.
- * Uses a mutex flag to prevent concurrent runs.
- */
-async function runRssCollection(): Promise<void> {
-  if (isRssRunning) {
-    logger.warn('RSS collection already in progress, skipping');
-    return;
-  }
-  isRssRunning = true;
-  try {
-    logger.info('--- Starting RSS collection ---');
-    const articles = await fetchAllRssFeeds();
-    const newCount = insertRawArticlesBatch(articles);
-    logger.info(`RSS collection complete: ${newCount} new articles inserted`);
-  } catch (error) {
-    logger.error(`RSS collection error: ${error}`);
-  } finally {
-    isRssRunning = false;
-  }
-}
-
-/**
- * Collects from CryptoPanic and CoinGecko APIs.
- */
-async function runApiCollection(): Promise<void> {
-  if (isApiRunning) {
-    logger.warn('API collection already in progress, skipping');
-    return;
-  }
-  isApiRunning = true;
-  try {
-    logger.info('--- Starting API collection ---');
-    const articles = await fetchAllApiSources();
-    const newCount = insertRawArticlesBatch(articles);
-    logger.info(`API collection complete: ${newCount} new articles inserted`);
-  } catch (error) {
-    logger.error(`API collection error: ${error}`);
-  } finally {
-    isApiRunning = false;
-  }
-}
-
-/**
- * Collects from Telegram source channels.
- */
-async function runTelegramCollection(): Promise<void> {
-  if (isTelegramRunning) {
-    logger.warn('Telegram collection already in progress, skipping');
-    return;
-  }
-  isTelegramRunning = true;
-  try {
-    logger.info('--- Starting Telegram collection ---');
-    const articles = await fetchAllTelegramChannels();
-    const newCount = insertRawArticlesBatch(articles);
-    logger.info(`Telegram collection complete: ${newCount} new articles inserted`);
-  } catch (error) {
-    logger.error(`Telegram collection error: ${error}`);
-  } finally {
-    isTelegramRunning = false;
-  }
-}
-
-// ============================================================
-// LLM PROCESSING PIPELINE
-// ============================================================
-
-/**
- * Processes unprocessed articles through the LLM filter.
- * Fetches up to 30 articles per run to avoid overwhelming the free tier.
- */
-async function runLlmProcessing(): Promise<void> {
-  if (isLlmRunning) {
-    logger.warn('LLM processing already in progress, skipping');
-    return;
-  }
-  isLlmRunning = true;
-
-  try {
-    logger.info('--- Starting LLM processing ---');
-    const articles = getUnprocessedArticles(30);
-
-    if (articles.length === 0) {
-      logger.info('LLM processing: no unprocessed articles');
-      return;
-    }
-
-    logger.info(`LLM processing: ${articles.length} articles to process`);
-    let processedCount = 0;
-
-    for (const article of articles) {
-      const request: LLMFilterRequest = {
-        title: article.title,
-        // content_snippet is stored in DB, use it (it's the first 500 chars of content)
-        // The DB column is content_snippet but StoredArticle maps it as summaryRu (null at this point)
-        // Actually content_snippet is not in StoredArticle — we use title + sourceName as fallback
-        content: article.title, // Will be enriched if we have full content in memory
-        sourceName: article.sourceName,
-      };
-
-      const result = await filterArticleWithLLM(request);
-
-      if (result) {
-        updateArticleWithLLMResult(
-          article.id,
-          result.relevanceScore,
-          result.category,
-          result.summaryRu
-        );
-        processedCount++;
-        logger.debug(
-          `Article ${article.id} scored: ${result.relevanceScore}/10 [${result.category}]`
-        );
-      } else {
-        // Mark as processed with score 0 to avoid reprocessing failures indefinitely
-        updateArticleWithLLMResult(article.id, 0, 'general', 'Не удалось обработать статью.');
-        logger.warn(`Article ${article.id} LLM failed, marked with score 0`);
-      }
-
-      // Inter-request delay (2 seconds) for free tier
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    logger.info(`LLM processing complete: ${processedCount}/${articles.length} successfully scored`);
-  } catch (error) {
-    logger.error(`LLM processing error: ${error}`);
-  } finally {
-    isLlmRunning = false;
-  }
-}
-
-// ============================================================
-// PUBLISH PIPELINE
-// ============================================================
-
-/**
- * Publishes articles above the relevance threshold to the Telegram channel.
- */
-async function runPublishing(): Promise<void> {
-  if (isPublishRunning) {
-    logger.warn('Publishing already in progress, skipping');
-    return;
-  }
-  isPublishRunning = true;
-
-  try {
-    logger.info('--- Starting publish pipeline ---');
-    const articles = getArticlesToPublish(config.relevanceThreshold);
-
-    if (articles.length === 0) {
-      logger.info('Publishing: no articles to publish');
-      return;
-    }
-
-    logger.info(`Publishing: ${articles.length} articles above threshold ${config.relevanceThreshold}`);
-
-    for (const article of articles) {
-      const telegramMsgId = await publishArticle(article);
-
-      if (telegramMsgId !== null) {
-        markArticleAsPublished(article.id, telegramMsgId);
-      }
-
-      // Delay between publishes
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    }
-
-    logger.info(`Publishing complete`);
-  } catch (error) {
-    logger.error(`Publishing error: ${error}`);
-  } finally {
-    isPublishRunning = false;
-  }
-}
+let isCycleRunning = false;
 
 // ============================================================
 // FULL PIPELINE (collect -> llm -> publish)
 // ============================================================
 
 /**
- * Runs a single full pipeline cycle:
- * 1. Collect from all sources
- * 2. Run LLM filter on unprocessed articles
- * 3. Publish scored articles above threshold
+ * Single unified cycle every 10 minutes:
+ * 1. Collect from ALL sources (RSS + API + Telegram) in parallel
+ * 2. Run LLM filter on new unprocessed articles
+ * 3. If anything scored above threshold → publish
+ * 4. If nothing → log "nothing to publish" and wait for next cycle
  */
 async function runFullCycle(): Promise<void> {
-  logger.info('========== FULL CYCLE START ==========');
+  if (isCycleRunning) {
+    logger.warn('Cycle already in progress, skipping');
+    return;
+  }
+  isCycleRunning = true;
+
+  logger.info('========== CYCLE START ==========');
   const cycleStart = Date.now();
 
-  await runRssCollection();
-  await runApiCollection();
-  await runTelegramCollection();
-  await runLlmProcessing();
-  await runPublishing();
+  try {
+    // Step 1: Collect from all sources in parallel
+    logger.info('Collecting from all sources...');
+    const [rssArticles, apiArticles, tgArticles] = await Promise.allSettled([
+      fetchAllRssFeeds(),
+      fetchAllApiSources(),
+      fetchAllTelegramChannels(),
+    ]);
 
-  const stats = getDatabaseStats();
-  const elapsed = Math.round((Date.now() - cycleStart) / 1000);
+    let totalNew = 0;
 
-  logger.info(
-    `========== FULL CYCLE END (${elapsed}s) | DB: total=${stats.totalArticles} unprocessed=${stats.unprocessed} published=${stats.published} ==========`
-  );
+    if (rssArticles.status === 'fulfilled') {
+      totalNew += insertRawArticlesBatch(rssArticles.value);
+    } else {
+      logger.error(`RSS failed: ${rssArticles.reason}`);
+    }
+
+    if (apiArticles.status === 'fulfilled') {
+      totalNew += insertRawArticlesBatch(apiArticles.value);
+    } else {
+      logger.error(`API failed: ${apiArticles.reason}`);
+    }
+
+    if (tgArticles.status === 'fulfilled') {
+      totalNew += insertRawArticlesBatch(tgArticles.value);
+    } else {
+      logger.error(`Telegram failed: ${tgArticles.reason}`);
+    }
+
+    logger.info(`Collection done: ${totalNew} new articles`);
+
+    // Step 2: LLM filter — process up to 30 unprocessed articles
+    const unprocessed = getUnprocessedArticles(30);
+
+    if (unprocessed.length === 0) {
+      logger.info('No new articles to filter');
+    } else {
+      logger.info(`Filtering ${unprocessed.length} articles through LLM...`);
+
+      for (const article of unprocessed) {
+        const request: LLMFilterRequest = {
+          title: article.title,
+          content: article.title,
+          sourceName: article.sourceName,
+        };
+
+        const result = await filterArticleWithLLM(request);
+
+        if (result) {
+          updateArticleWithLLMResult(article.id, result.relevanceScore, result.category, result.summaryRu);
+          logger.debug(`[${result.relevanceScore}/10] ${article.title.slice(0, 60)}`);
+        } else {
+          updateArticleWithLLMResult(article.id, 0, 'general', '');
+        }
+
+        // 2s delay between LLM requests (free tier rate limit)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    // Step 3: Publish articles above threshold
+    const toPublish = getArticlesToPublish(config.relevanceThreshold);
+
+    if (toPublish.length === 0) {
+      logger.info('Nothing to publish this cycle');
+    } else {
+      logger.info(`Publishing ${toPublish.length} articles...`);
+
+      for (const article of toPublish) {
+        const msgId = await publishArticle(article);
+        if (msgId !== null) {
+          markArticleAsPublished(article.id, msgId);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
+
+  } catch (error) {
+    logger.error(`Cycle error: ${error}`);
+  } finally {
+    isCycleRunning = false;
+    const elapsed = Math.round((Date.now() - cycleStart) / 1000);
+    const stats = getDatabaseStats();
+    logger.info(
+      `========== CYCLE END (${elapsed}s) | total=${stats.totalArticles} published=${stats.published} ==========`
+    );
+  }
 }
 
 // ============================================================
@@ -2280,60 +2178,22 @@ async function runFullCycle(): Promise<void> {
 // ============================================================
 
 /**
- * Sets up all cron jobs.
- *
- * Schedule:
- * - RSS collection: every RSS_INTERVAL_MINUTES (default 15 min)
- * - API collection: every API_INTERVAL_MINUTES (default 10 min)
- * - Telegram collection: every TELEGRAM_INTERVAL_MINUTES (default 5 min)
- * - LLM processing: every 7 minutes (slightly offset from collection)
- * - Publishing: every 5 minutes (after LLM has time to process)
- * - Cleanup: daily at 3:00 AM
- * - Stats log: every 60 minutes
+ * Single cron: full cycle every 10 minutes.
+ * Daily cleanup at 3:00 AM.
  */
 function setupCronJobs(): void {
-  const rssInterval = config.intervals.rssMinutes;
-  const apiInterval = config.intervals.apiMinutes;
-  const tgInterval = config.intervals.telegramMinutes;
-
-  // RSS collection
-  cron.schedule(`*/${rssInterval} * * * *`, () => {
-    runRssCollection().catch(e => logger.error(`Cron RSS error: ${e}`));
+  // Main cycle: every 10 minutes
+  cron.schedule('*/10 * * * *', () => {
+    runFullCycle().catch(e => logger.error(`Cron cycle error: ${e}`));
   });
 
-  // API collection
-  cron.schedule(`*/${apiInterval} * * * *`, () => {
-    runApiCollection().catch(e => logger.error(`Cron API error: ${e}`));
-  });
-
-  // Telegram collection
-  cron.schedule(`*/${tgInterval} * * * *`, () => {
-    runTelegramCollection().catch(e => logger.error(`Cron TG error: ${e}`));
-  });
-
-  // LLM processing (every 7 minutes)
-  cron.schedule('*/7 * * * *', () => {
-    runLlmProcessing().catch(e => logger.error(`Cron LLM error: ${e}`));
-  });
-
-  // Publishing (every 5 minutes)
-  cron.schedule('*/5 * * * *', () => {
-    runPublishing().catch(e => logger.error(`Cron publish error: ${e}`));
-  });
-
-  // Daily cleanup at 3:00 AM
+  // Daily cleanup at 3:00 AM — remove articles older than 7 days
   cron.schedule('0 3 * * *', () => {
     const removed = cleanupOldArticles(7);
     logger.info(`Daily cleanup: removed ${removed} old articles`);
   });
 
-  // Hourly stats log
-  cron.schedule('0 * * * *', () => {
-    const stats = getDatabaseStats();
-    logger.info(`HOURLY STATS: ${JSON.stringify(stats)}`);
-  });
-
-  logger.info('Cron jobs scheduled');
+  logger.info('Cron scheduled: full cycle every 10 min, cleanup daily at 03:00');
 }
 
 // ============================================================
@@ -2407,32 +2267,27 @@ main();
 
 ### Phase 8 Review Checklist
 
-- [ ] Run `npm run typecheck` — zero TypeScript errors
-- [ ] Run full cycle in dry-run mode:
-  ```bash
-  npx ts-node src/orchestrator/index.ts
-  ```
-- [ ] Verify startup sequence in logs: DB init → TG client → Publisher init → Cron setup → First cycle
-- [ ] Verify DB stats logged after first cycle (non-zero totalArticles)
-- [ ] Verify articles appear in the Telegram channel after first cycle
-- [ ] Verify mutex flags work: manually trigger two concurrent runs and check "already in progress" warnings
-- [ ] Verify graceful shutdown on Ctrl+C: TG client disconnects, DB closes cleanly
-- [ ] Verify `unhandledRejection` handler logs errors without crashing
-- [ ] Check `logs/combined.log` has structured log output
-- [ ] Verify cron job timing by waiting 15 minutes and checking for second RSS run
+- [ ] `npm run typecheck` — zero TypeScript errors
+- [ ] Запустить локально: `npx ts-node src/orchestrator/index.ts`
+- [ ] Логи показывают последовательность: DB init → TG client → Publisher init → Cron setup → первый цикл
+- [ ] В первом цикле видно: "Collecting from all sources..." → "Filtering N articles..." → "Publishing N articles" или "Nothing to publish this cycle"
+- [ ] Через 10 минут автоматически запускается второй цикл (проверить по логу "CYCLE START")
+- [ ] Если `isCycleRunning = true` — второй вызов логирует "Cycle already in progress, skipping"
+- [ ] Graceful shutdown на Ctrl+C: TG client disconnects, DB closes cleanly
+- [ ] В Telegram канале появляются посты после первого цикла
+- [ ] При отсутствии стоящих новостей — лог "Nothing to publish this cycle", канал молчит (не спамит)
 
 ### Phase 8 Commit Message
 
 ```
-feat: implement main orchestrator with cron scheduling and full pipeline
+feat: implement unified 10-minute cycle orchestrator
 
-- Add runRssCollection, runApiCollection, runTelegramCollection with mutex flags
-- Add runLlmProcessing with 30-article batch limit and 2s inter-request delay
-- Add runPublishing with threshold filtering and markArticleAsPublished
-- Add runFullCycle() for complete collect->filter->publish pipeline
-- Setup 7 cron jobs: RSS/API/TG collection, LLM processing, publishing, cleanup, stats
-- Add graceful shutdown on SIGINT/SIGTERM with client disconnect and DB close
-- Add uncaughtException and unhandledRejection handlers
+- Single runFullCycle(): collect all sources in parallel → LLM filter → publish if worthy
+- One cron job every 10 minutes instead of 5 separate jobs
+- Parallel collection via Promise.allSettled (RSS + API + Telegram)
+- isCycleRunning mutex prevents overlapping cycles
+- Graceful shutdown on SIGINT/SIGTERM
+- Daily cleanup at 03:00
 ```
 
 ---
