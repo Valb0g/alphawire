@@ -2437,58 +2437,124 @@ feat: implement main orchestrator with cron scheduling and full pipeline
 
 ---
 
-## Phase 9: Deployment
+## Phase 9: Deployment (Render.com)
 
 ### Goal
-Configure PM2 for production process management, write setup documentation, and finalize the project.
+Deploy to Render.com as a free Background Worker. Add a keep-alive HTTP server so Render doesn't spin down the process. Set up UptimeRobot (free) to ping `/health` every 10 minutes. Write full README.
 
-### Files to Create
+### Problem: Render Free Tier Spins Down
+Render спит через 15 минут без входящих запросов. Решение — встроенный HTTP сервер на `/health`, который пингует UptimeRobot каждые 10 минут, не давая процессу уснуть.
 
-#### `ecosystem.config.js`
+### Files to Create/Modify
 
-```javascript
-module.exports = {
-  apps: [
-    {
-      name: 'crypto-news-bot',
-      script: './dist/orchestrator/index.js',
-      instances: 1,
-      exec_mode: 'fork',
-      watch: false,
-      max_memory_restart: '500M',
-      restart_delay: 5000,
-      max_restarts: 10,
-      min_uptime: '30s',
-      env: {
-        NODE_ENV: 'production',
-        LOG_LEVEL: 'info',
-      },
-      log_date_format: 'YYYY-MM-DD HH:mm:ss',
-      error_file: './logs/pm2-error.log',
-      out_file: './logs/pm2-out.log',
-      merge_logs: true,
-    },
-  ],
-};
+#### `src/health.ts` — keep-alive HTTP server
+
+```typescript
+import http from 'http';
+import { logger } from './utils/logger';
+
+export function startHealthServer(port: number = 3000): void {
+  const server = http.createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+
+  server.listen(port, () => {
+    logger.info(`Health server listening on port ${port}`);
+  });
+}
+```
+
+#### `src/orchestrator/index.ts` — добавить вызов startHealthServer
+
+В начало `main()` добавить:
+```typescript
+import { startHealthServer } from '../health';
+
+// первая строка в main():
+startHealthServer(Number(process.env.PORT) || 3000);
+```
+
+#### `render.yaml` — Render service config
+
+```yaml
+services:
+  - type: worker
+    name: alphawire
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/orchestrator/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: LOG_LEVEL
+        value: info
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_SESSION
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHANNEL_ID
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CRYPTOPANIC_API_KEY
+        sync: false
+      - key: COINGECKO_API_KEY
+        sync: false
+      - key: RELEVANCE_THRESHOLD
+        value: "6"
+      - key: RSS_INTERVAL_MINUTES
+        value: "15"
+      - key: API_INTERVAL_MINUTES
+        value: "10"
+      - key: TELEGRAM_INTERVAL_MINUTES
+        value: "5"
+      - key: OPENROUTER_MODEL
+        value: qwen/qwen-2.5-72b-instruct:free
+```
+
+#### `.env.example` — добавить PORT
+
+```env
+PORT=3000
 ```
 
 #### `README.md`
 
 ```markdown
-# Crypto News Bot
+# AlphaWire
 
-A Telegram bot that aggregates crypto news from RSS feeds, Telegram channels, and APIs, filters them through Qwen LLM, and publishes important news in Russian.
+Crypto news aggregator — filters signal from noise, publishes to Telegram.
 
-## Prerequisites
+Collects from RSS feeds, Telegram channels, and APIs. Filters through Qwen LLM via OpenRouter. Publishes important news in Russian to a Telegram channel.
 
+## Category Legend
+
+- 🔴 Security — hacks, exploits, vulnerabilities
+- 🟡 Platform — exchange/protocol launches and closures
+- 🟣 Regulatory — government actions, laws, sanctions
+- 🔵 On-chain — whale moves, large transfers, DeFi events
+- ⚪ General — important crypto news
+
+## Local Setup
+
+### Prerequisites
 - Node.js 20+
-- npm 9+
-- PM2 (`npm install -g pm2`)
-- A Telegram account for userbot (gramjs)
+- A Telegram account (for gramjs userbot)
 - A Telegram bot token (create via @BotFather)
-- The bot must be an **admin** in your target channel with "Post Messages" permission
-
-## Setup
+- The bot must be **admin** in your target channel with "Post Messages" permission
 
 ### 1. Install dependencies
 \`\`\`bash
@@ -2499,120 +2565,110 @@ npm install
 \`\`\`bash
 cp .env.example .env
 \`\`\`
-Edit `.env` with your values. See `.env.example` for all required fields.
 
 ### 3. Get Telegram API credentials
 1. Go to https://my.telegram.org
-2. Log in and go to "API development tools"
+2. Log in → "API development tools"
 3. Create a new application
 4. Copy `api_id` and `api_hash` to `.env`
 
-### 4. Authenticate Telegram userbot (one-time)
+### 4. Authenticate Telegram userbot (one-time, run locally)
 \`\`\`bash
 npx ts-node src/collectors/telegram.ts
 \`\`\`
-Follow the prompts. After auth, copy the printed `TELEGRAM_SESSION` value to `.env`.
+Follow the prompts. Copy the printed `TELEGRAM_SESSION` string to `.env`.
+> ⚠️ This step MUST be done locally before deploying. The session string is then used headlessly on the server.
 
 ### 5. Get OpenRouter API key
 1. Go to https://openrouter.ai
-2. Create a free account
-3. Generate an API key
-4. Add to `.env` as `OPENROUTER_API_KEY`
+2. Create a free account → generate API key
+3. Add to `.env` as `OPENROUTER_API_KEY`
 
-### 6. Build the project
+### 6. Run locally
 \`\`\`bash
-npm run build
+npm run dev
 \`\`\`
 
-### 7. Start with PM2
+## Deploy to Render.com
+
+### 1. Push to GitHub
 \`\`\`bash
-pm2 start ecosystem.config.js
-pm2 save
-pm2 startup  # Follow the printed command to enable autostart
+git push origin main
 \`\`\`
 
-## Monitoring
+### 2. Create Render service
+1. Go to render.com → New → Background Worker
+2. Connect your GitHub repo (Valb0g/alphawire)
+3. Render will detect `render.yaml` automatically
 
-\`\`\`bash
-pm2 status                          # Process status
-pm2 logs crypto-news-bot            # Live logs
-pm2 logs crypto-news-bot --lines 100  # Last 100 lines
-tail -f logs/combined.log           # Application logs
+### 3. Set environment variables
+In Render dashboard → Environment, add all variables marked `sync: false` in `render.yaml`:
+- `TELEGRAM_API_ID`
+- `TELEGRAM_API_HASH`
+- `TELEGRAM_SESSION` (from local auth step)
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHANNEL_ID`
+- `OPENROUTER_API_KEY`
+- `CRYPTOPANIC_API_KEY`
+- `COINGECKO_API_KEY`
+
+### 4. Set up UptimeRobot (keep-alive)
+Render free tier sleeps after 15 minutes of inactivity. Fix:
+1. Go to https://uptimerobot.com → free account
+2. Add Monitor → HTTP(s)
+3. URL: `https://your-render-url.onrender.com/health`
+4. Interval: **10 minutes**
+
+This pings the `/health` endpoint every 10 min, keeping the process alive 24/7.
+
+### 5. Deploy
+Click "Deploy" in Render dashboard. Check logs for:
+\`\`\`
+Health server listening on port 3000
+Database initialized
+Starting orchestrator...
 \`\`\`
 
 ## Configuration
 
-All settings are in `.env`:
-
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RELEVANCE_THRESHOLD` | Minimum score (0-10) to publish | `6` |
+| `RELEVANCE_THRESHOLD` | Min score (0-10) to publish | `6` |
 | `RSS_INTERVAL_MINUTES` | RSS polling interval | `15` |
 | `API_INTERVAL_MINUTES` | API polling interval | `10` |
-| `TELEGRAM_INTERVAL_MINUTES` | Telegram channel polling interval | `5` |
-| `OPENROUTER_MODEL` | Qwen model ID on OpenRouter | `qwen/qwen-2.5-72b-instruct:free` |
+| `TELEGRAM_INTERVAL_MINUTES` | Telegram channels polling | `5` |
+| `OPENROUTER_MODEL` | Qwen model on OpenRouter | `qwen/qwen-2.5-72b-instruct:free` |
 
-## Category Legend
+## Monitoring
 
-- 🔴 Security — hacks, exploits, vulnerabilities
-- 🟡 Platform — exchange/protocol launches and closures
-- 🟣 Regulatory — government actions, laws, sanctions
-- 🔵 On-chain — whale moves, large transfers, DeFi events
-- ⚪ General — important news that doesn't fit other categories
-
-## Stopping
-
-\`\`\`bash
-pm2 stop crypto-news-bot
-pm2 delete crypto-news-bot
-\`\`\`
-```
-
-### Production Deployment Commands
-
-```bash
-# 1. Build TypeScript
-npm run build
-
-# 2. Verify dist/ was created
-ls dist/orchestrator/index.js
-
-# 3. Start with PM2
-pm2 start ecosystem.config.js
-
-# 4. Check it's running
-pm2 status
-
-# 5. Save PM2 process list for autostart
-pm2 save
-
-# 6. Setup autostart (run the command that pm2 startup prints)
-pm2 startup
+- Render dashboard → Logs (live stream)
+- UptimeRobot → uptime stats and downtime alerts
+- Telegram channel — posts appearing = bot is alive
 ```
 
 ### Phase 9 Review Checklist
 
 - [ ] `npm run build` completes without errors
-- [ ] `dist/` directory contains compiled JS files
-- [ ] `pm2 start ecosystem.config.js` starts the process (status: `online`)
-- [ ] `pm2 logs crypto-news-bot` shows normal log output (no crash loops)
-- [ ] Verify `logs/pm2-out.log` and `logs/pm2-error.log` are being written
-- [ ] Wait 15 minutes and verify a cron cycle ran (check `logs/combined.log`)
-- [ ] Verify bot is posting to the channel after LLM filtering
-- [ ] Test crash recovery: `kill -9 $(pm2 pid crypto-news-bot)` — PM2 should restart it within 5 seconds
-- [ ] Verify `max_restarts: 10` and `min_uptime: 30s` are working (check `pm2 show crypto-news-bot`)
-- [ ] `pm2 save` completed (check `~/.pm2/dump.pm2` exists)
+- [ ] `src/health.ts` создан, `startHealthServer()` вызывается в `main()`
+- [ ] `render.yaml` в корне проекта
+- [ ] Локально: `npm run dev` запускает health сервер, `curl localhost:3000/health` возвращает `{"status":"ok",...}`
+- [ ] `TELEGRAM_SESSION` получен локально и готов к вставке в Render env vars
+- [ ] Render: Background Worker создан, все env vars заполнены
+- [ ] Render logs показывают нормальный старт без ошибок
+- [ ] UptimeRobot настроен на `/health` с интервалом 10 минут
+- [ ] Подождать 20 минут — бот не уснул, продолжает постить
+- [ ] Проверить что в Telegram канале появляются посты
 
 ### Phase 9 Commit Message
 
 ```
-feat: add PM2 deployment config and comprehensive README
+feat: add Render.com deployment config and keep-alive health server
 
-- Add ecosystem.config.js with 500MB memory limit and crash recovery
-- Configure PM2 log rotation to logs/pm2-*.log files
-- Write full README with setup steps, monitoring commands, category legend
-- Document all env variables with defaults in README table
-- Add production build and deployment command sequence
+- Add src/health.ts with HTTP server on /health endpoint
+- Wire startHealthServer() into orchestrator main()
+- Add render.yaml with Background Worker config and env var declarations
+- Write full README with local setup, Render deploy, and UptimeRobot instructions
+- Add PORT to .env.example
 ```
 
 ---
