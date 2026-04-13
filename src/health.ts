@@ -12,8 +12,12 @@ export function startHealthServer(port: number = 3000): void {
     }
   })
 
-  server.on('error', (err) => {
-    logger.error(`Health server error: ${err.message}`)
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.warn(`Port ${port} is already in use, health server skipped`)
+    } else {
+      logger.error(`Health server error: ${err.message}`)
+    }
   })
 
   server.listen(port, () => {

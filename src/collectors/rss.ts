@@ -41,7 +41,7 @@ const parser = new Parser<CustomFeed, CustomItem>({
   },
   timeout: 10000,
   headers: {
-    'User-Agent': 'Mozilla/5.0 (compatible; CryptoNewsBot/1.0)',
+    'User-Agent': 'Mozilla/5.0 (compatible; AlphaWire/1.0)',
     'Accept': 'application/rss+xml, application/xml, text/xml',
   },
 })

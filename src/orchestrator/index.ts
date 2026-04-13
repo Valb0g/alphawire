@@ -189,7 +189,7 @@ async function main(): Promise<void> {
   // Start health server first (for Render.com keep-alive)
   startHealthServer(Number(process.env.PORT) || 3000)
 
-  logger.info('=== Crypto News Bot Starting ===')
+  logger.info('=== AlphaWire Starting ===')
 
   // Setup signal handlers
   process.on('SIGINT', () => gracefulShutdown('SIGINT'))
@@ -224,7 +224,7 @@ async function main(): Promise<void> {
       await sendStatusMessage('Бот запущен и работает. Начинаю мониторинг крипто-новостей.')
     }
 
-    logger.info('=== Crypto News Bot Running ===')
+    logger.info('=== AlphaWire Running ===')
     logger.info(`Relevance threshold: ${config.relevanceThreshold}/10`)
 
   } catch (error) {

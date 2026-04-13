@@ -277,7 +277,13 @@ export function cleanupOldArticles(days = 7): number {
   const cutoff = cutoffDate.toISOString()
 
   const cleanup = database.transaction(() => {
-    // Remove orphaned publish_log rows first (no CASCADE on FK)
+    // Remove truly orphaned publish_log entries (article no longer exists)
+    database.prepare(`
+      DELETE FROM publish_log
+      WHERE article_id NOT IN (SELECT id FROM articles)
+    `).run()
+
+    // Remove publish_log entries for articles about to be deleted
     database.prepare(`
       DELETE FROM publish_log
       WHERE article_id IN (

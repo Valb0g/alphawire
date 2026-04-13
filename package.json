@@ -1,7 +1,7 @@
 {
-  "name": "crypto-news-bot",
+  "name": "alphawire",
   "version": "1.0.0",
-  "description": "Telegram crypto news aggregation bot",
+  "description": "AlphaWire — Telegram crypto news aggregation bot",
   "main": "dist/orchestrator/index.js",
   "scripts": {
     "build": "tsc",

@@ -97,10 +97,10 @@ Starting orchestrator...
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RELEVANCE_THRESHOLD` | Min score (0-10) to publish | `6` |
-| `RSS_INTERVAL_MINUTES` | RSS polling interval | `15` |
+| `RSS_INTERVAL_MINUTES` | RSS polling interval | `10` |
 | `API_INTERVAL_MINUTES` | API polling interval | `10` |
-| `TELEGRAM_INTERVAL_MINUTES` | Telegram channels polling | `5` |
-| `OPENROUTER_MODEL` | Qwen model on OpenRouter | `qwen/qwen-2.5-72b-instruct:free` |
+| `TELEGRAM_INTERVAL_MINUTES` | Telegram channels polling | `10` |
+| `OPENROUTER_MODEL` | Qwen model on OpenRouter | `minimax/minimax-m2.5:free` |
 
 ## Monitoring
 

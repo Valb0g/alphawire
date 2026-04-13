@@ -10,7 +10,7 @@ const COINGECKO_BASE = 'https://api.coingecko.com/api/v3/news'
 const axiosInstance = axios.create({
   timeout: 15000,
   headers: {
-    'User-Agent': 'CryptoNewsBot/1.0',
+    'User-Agent': 'AlphaWire/1.0',
     'Accept': 'application/json',
   },
 })
