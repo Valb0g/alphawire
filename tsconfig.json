@@ -14,8 +14,13 @@
     "sourceMap": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "allowImportingTsExtensions": false
   },
   "include": ["src/**/*"],
+  "ts-node": {
+    "experimentalSpecifierResolution": "node"
+  },
   "exclude": ["node_modules", "dist"]
 }

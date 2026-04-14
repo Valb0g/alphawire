@@ -1,5 +1,5 @@
 import http from 'http'
-import { logger } from './utils/logger.js'
+import { logger } from './utils/logger'
 
 export function startHealthServer(port: number = 3000): void {
   const server = http.createServer((req, res) => {

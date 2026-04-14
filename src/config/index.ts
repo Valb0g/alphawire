@@ -1,5 +1,5 @@
 import dotenv from 'dotenv'
-import { AppConfig } from '../types/index.js'
+import { AppConfig } from '../types/index'
 
 dotenv.config()
 
@@ -26,7 +26,7 @@ export const config: AppConfig = {
   },
   openRouter: {
     apiKey: requireEnv('OPENROUTER_API_KEY'),
-    model: optionalEnv('OPENROUTER_MODEL', 'minimax/minimax-m2.5:free'),
+    model: optionalEnv('OPENROUTER_MODEL', 'google/gemma-4-31b-it:free'),
   },
   cryptoPanic: {
     token: optionalEnv('CRYPTOPANIC_TOKEN', ''),

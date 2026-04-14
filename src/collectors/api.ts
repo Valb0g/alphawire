@@ -1,11 +1,11 @@
 import axios, { AxiosResponse } from 'axios'
-import { RawArticle, CryptoPanicPost, CoinGeckoNewsItem } from '../types/index.js'
-import { generateArticleHash } from '../utils/hash.js'
-import { config } from '../config/index.js'
-import { logger } from '../utils/logger.js'
+import { RawArticle, CryptoPanicPost, CoinGeckoNewsItem } from '../types/index'
+import { generateArticleHash } from '../utils/hash'
+import { config } from '../config/index'
+import { logger } from '../utils/logger'
 
 const CRYPTOPANIC_BASE = 'https://cryptopanic.com/api/v1/posts/'
-const COINGECKO_BASE = 'https://api.coingecko.com/api/v3/news'
+const COINGECKO_BASE = 'https://api.coingecko.com/api/v3/news?per_page=50'
 
 const axiosInstance = axios.create({
   timeout: 15000,

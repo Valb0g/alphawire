@@ -3,14 +3,14 @@ import {
   LLMFilterRequest,
   LLMFilterResponse,
   NewsCategory,
-} from '../types/index.js'
-import { config } from '../config/index.js'
-import { logger } from '../utils/logger.js'
+} from '../types/index'
+import { config } from '../config/index'
+import { logger } from '../utils/logger'
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 // Delay between LLM API calls to respect rate limits (free tier)
-const INTER_REQUEST_DELAY_MS = 2000
+const INTER_REQUEST_DELAY_MS = 8000
 
 // Maximum content length to send to LLM (to stay within context window)
 const MAX_CONTENT_LENGTH = 1500

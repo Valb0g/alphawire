@@ -1,10 +1,10 @@
 import { TelegramClient } from 'telegram'
 import { StringSession } from 'telegram/sessions/index.js'
 import input from 'input'
-import { RawArticle, TelegramSourceChannel } from '../types/index.js'
-import { generateArticleHash } from '../utils/hash.js'
-import { config } from '../config/index.js'
-import { logger } from '../utils/logger.js'
+import { RawArticle, TelegramSourceChannel } from '../types/index'
+import { generateArticleHash } from '../utils/hash'
+import { config } from '../config/index'
+import { logger } from '../utils/logger'
 
 const SOURCE_CHANNELS: TelegramSourceChannel[] = [
   { username: 'zachxbt', sourceName: 'ZachXBT' },
@@ -12,8 +12,6 @@ const SOURCE_CHANNELS: TelegramSourceChannel[] = [
   { username: 'blocksecteam', sourceName: 'BlockSec' },
   { username: 'whale_alert', sourceName: 'WhaleAlert' },
   { username: 'lookonchain', sourceName: 'LookOnChain' },
-  { username: 'wublockchain', sourceName: 'WuBlockchain-TG' },
-  { username: 'TheBlock__', sourceName: 'TheBlock-TG' },
 ]
 
 // Minimum message length to consider as a news item (filter out short reactions/reposts)

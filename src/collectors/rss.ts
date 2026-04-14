@@ -1,7 +1,7 @@
 import Parser from 'rss-parser'
-import { RawArticle, RssFeedConfig } from '../types/index.js'
-import { generateArticleHash } from '../utils/hash.js'
-import { logger } from '../utils/logger.js'
+import { RawArticle, RssFeedConfig } from '../types/index'
+import { generateArticleHash } from '../utils/hash'
+import { logger } from '../utils/logger'
 
 // Type augmentation for rss-parser to handle custom fields
 type CustomFeed = Record<string, unknown>

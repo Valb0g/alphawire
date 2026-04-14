@@ -1,7 +1,7 @@
 import { Telegraf } from 'telegraf'
-import { StoredArticle, NewsCategory } from '../types/index.js'
-import { config } from '../config/index.js'
-import { logger } from '../utils/logger.js'
+import { StoredArticle, NewsCategory } from '../types/index'
+import { config } from '../config/index'
+import { logger } from '../utils/logger'
 
 const CATEGORY_EMOJI: Record<NewsCategory, string> = {
   security: '🔴',

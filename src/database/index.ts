@@ -1,9 +1,9 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
-import { RawArticle, StoredArticle, NewsCategory, CollectorSource } from '../types/index.js'
-import { config } from '../config/index.js'
-import { logger } from '../utils/logger.js'
+import { RawArticle, StoredArticle, NewsCategory, CollectorSource } from '../types/index'
+import { config } from '../config/index'
+import { logger } from '../utils/logger'
 
 // ============================================================
 // EXACT SQLITE SCHEMA

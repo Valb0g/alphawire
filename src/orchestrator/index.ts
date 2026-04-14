@@ -9,20 +9,20 @@ import {
   cleanupOldArticles,
   getDatabaseStats,
   closeDatabase,
-} from '../database/index.js'
-import { fetchAllRssFeeds } from '../collectors/rss.js'
-import { fetchAllApiSources } from '../collectors/api.js'
+} from '../database/index'
+import { fetchAllRssFeeds } from '../collectors/rss'
+import { fetchAllApiSources } from '../collectors/api'
 import {
   initTelegramClient,
   fetchAllTelegramChannels,
   disconnectTelegramClient,
-} from '../collectors/telegram.js'
-import { filterArticleWithLLM } from '../llm/filter.js'
-import { initPublisher, publishArticle, sendStatusMessage } from '../publisher/index.js'
-import { startHealthServer } from '../health.js'
-import { config } from '../config/index.js'
-import { logger } from '../utils/logger.js'
-import { LLMFilterRequest } from '../types/index.js'
+} from '../collectors/telegram'
+import { filterArticleWithLLM } from '../llm/filter'
+import { initPublisher, publishArticle, sendStatusMessage } from '../publisher/index'
+import { startHealthServer } from '../health'
+import { config } from '../config/index'
+import { logger } from '../utils/logger'
+import { LLMFilterRequest } from '../types/index'
 
 // ============================================================
 // ORCHESTRATOR STATE
@@ -106,8 +106,8 @@ async function runFullCycle(): Promise<void> {
           updateArticleWithLLMResult(article.id, 0, 'general', '')
         }
 
-        // 2s delay between LLM requests (free tier rate limit)
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        // 8s delay between LLM requests (free tier rate limit)
+        await new Promise(resolve => setTimeout(resolve, 8000))
       }
     }
 
