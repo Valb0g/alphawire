@@ -39,19 +39,39 @@ export function initPublisher(): void {
  * (blank line)
  * 🔗 {SOURCE_NAME} | {URL}
  */
+function cleanUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    u.searchParams.delete('utm_source')
+    u.searchParams.delete('utm_medium')
+    u.searchParams.delete('utm_campaign')
+    u.searchParams.delete('utm_content')
+    u.searchParams.delete('utm_term')
+    return u.toString()
+  } catch {
+    return url
+  }
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 export function formatMessage(article: StoredArticle): string {
   const emoji = CATEGORY_EMOJI[article.category ?? 'general']
-  const title = article.title.trim()
-  const summary = (article.summaryRu ?? 'Краткое содержание недоступно.').trim()
+  const title = escapeHtml(article.title.trim())
+  const summary = escapeHtml((article.summaryRu ?? 'Краткое содержание недоступно.').trim())
   const sourceName = article.sourceName.split(':').pop() ?? article.sourceName
-  const url = article.url
+  const url = cleanUrl(article.url)
 
-  const message = `${emoji} ${title}\n\n${summary}\n\n🔗 ${sourceName} | ${url}`
+  const message = `${emoji} ${title}\n\n${summary}\n\n🔗 <a href="${url}">${escapeHtml(sourceName)}</a>`
 
-  // Truncate if over limit (rare but safe)
   if (message.length > TELEGRAM_MAX_LENGTH) {
-    const truncatedSummary = summary.substring(0, TELEGRAM_MAX_LENGTH - 200) + '...'
-    return `${emoji} ${title}\n\n${truncatedSummary}\n\n🔗 ${sourceName} | ${url}`
+    const truncatedSummary = escapeHtml(summary.substring(0, TELEGRAM_MAX_LENGTH - 200) + '...')
+    return `${emoji} ${title}\n\n${truncatedSummary}\n\n🔗 <a href="${url}">${escapeHtml(sourceName)}</a>`
   }
 
   return message
@@ -81,6 +101,7 @@ export async function publishArticle(article: StoredArticle): Promise<number | n
       config.telegram.channelId,
       messageText,
       {
+        parse_mode: 'HTML',
         link_preview_options: { is_disabled: true },
       }
     )
