@@ -149,8 +149,8 @@ async function runFullCycle(): Promise<void> {
  * Daily cleanup at 3:00 AM.
  */
 function setupCronJobs(): void {
-  // Main cycle: every 10 minutes
-  cron.schedule('*/10 * * * *', () => {
+  // Main cycle: every 20 minutes
+  cron.schedule('*/20 * * * *', () => {
     runFullCycle().catch(e => logger.error(`Cron cycle error: ${e}`))
   })
 

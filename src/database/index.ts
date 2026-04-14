@@ -259,7 +259,7 @@ export function getArticlesToPublish(threshold: number): StoredArticle[] {
         AND published = 0
         AND relevance_score >= ?
       ORDER BY relevance_score DESC, published_at DESC
-      LIMIT 20
+      LIMIT 1
     `)
     .all(threshold) as Array<Record<string, unknown>>
 

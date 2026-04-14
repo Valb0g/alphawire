@@ -26,7 +26,7 @@ export const config: AppConfig = {
   },
   openRouter: {
     apiKey: requireEnv('OPENROUTER_API_KEY'),
-    model: optionalEnv('OPENROUTER_MODEL', 'google/gemma-4-31b-it:free'),
+    model: optionalEnv('OPENROUTER_MODEL', 'openrouter/elephant-alpha'),
   },
   cryptoPanic: {
     token: optionalEnv('CRYPTOPANIC_TOKEN', ''),

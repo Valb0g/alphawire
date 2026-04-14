@@ -41,7 +41,7 @@ Return ONLY valid JSON with this exact structure:
 {
   "relevanceScore": <number 0-10>,
   "category": "<security|platform|regulatory|onchain|general>",
-  "summaryRu": "<2-3 sentence summary in Russian language>",
+  "summaryRu": "<2-3 sentences in Russian, max 300 characters>",
   "reasoning": "<1 sentence explaining your score in English>"
 }`
 
@@ -145,7 +145,7 @@ export async function filterArticleWithLLM(
       { role: 'user', content: buildUserPrompt(request) },
     ],
     temperature: 0.1,  // Low temperature for consistent structured output
-    max_tokens: 300,
+    max_tokens: 1000,
   }
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -160,7 +160,7 @@ export async function filterArticleWithLLM(
             'HTTP-Referer': 'https://github.com/Valb0g/alphawire',
             'X-Title': 'AlphaWire',
           },
-          timeout: 30000,
+          timeout: 60000,
         }
       )
 
