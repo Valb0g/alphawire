@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm install && npm run build"
+
+[deploy]
+startCommand = "node dist/orchestrator/index.js"
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10
