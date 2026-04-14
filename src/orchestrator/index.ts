@@ -29,6 +29,12 @@ import { LLMFilterRequest } from '../types/index'
 // ============================================================
 
 let isCycleRunning = false
+let lastPublishedAt: Date | null = null
+
+// Minimum interval between posts (ms)
+const MIN_PUBLISH_INTERVAL_MS = parseInt(
+  process.env.MIN_PUBLISH_INTERVAL_MINUTES ?? '60'
+) * 60 * 1000
 
 // ============================================================
 // FULL PIPELINE (collect -> llm -> publish)
@@ -111,20 +117,28 @@ async function runFullCycle(): Promise<void> {
       }
     }
 
-    // Step 3: Publish articles above threshold
-    const toPublish = getArticlesToPublish(config.relevanceThreshold)
+    // Step 3: Publish — enforce minimum interval between posts
+    const now = new Date()
+    const timeSinceLast = lastPublishedAt
+      ? now.getTime() - lastPublishedAt.getTime()
+      : Infinity
 
-    if (toPublish.length === 0) {
-      logger.info('Nothing to publish this cycle')
+    if (timeSinceLast < MIN_PUBLISH_INTERVAL_MS) {
+      const waitMin = Math.round((MIN_PUBLISH_INTERVAL_MS - timeSinceLast) / 60000)
+      logger.info(`Skipping publish — next post in ${waitMin} min`)
     } else {
-      logger.info(`Publishing ${toPublish.length} articles...`)
+      const toPublish = getArticlesToPublish(config.relevanceThreshold)
 
-      for (const article of toPublish) {
+      if (toPublish.length === 0) {
+        logger.info('Nothing to publish this cycle')
+      } else {
+        const article = toPublish[0]!
         const msgId = await publishArticle(article)
         if (msgId !== null) {
           markArticleAsPublished(article.id, msgId)
+          lastPublishedAt = new Date()
+          logger.info(`Published 1 article. Next post available in ${MIN_PUBLISH_INTERVAL_MS / 60000} min`)
         }
-        await new Promise(resolve => setTimeout(resolve, 1500))
       }
     }
 
