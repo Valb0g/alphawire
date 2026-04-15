@@ -60,13 +60,36 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
 }
 
+/** Removes CJK (Chinese/Japanese/Korean) characters from a string. */
+function stripCJK(text: string): string {
+  // CJK Unified Ideographs, CJK Extension A/B, CJK Compatibility, Hiragana, Katakana, etc.
+  return text.replace(/[\u2E80-\u2EFF\u3000-\u9FFF\uF900-\uFAFF\uFE30-\uFE4F\u{20000}-\u{2A6DF}]/gu, '').trim()
+}
+
+/** Strips social-media noise: hashtags (#Binance → Binance) and @-mentions. */
+function stripSocialNoise(text: string): string {
+  return text.replace(/#(\w+)/g, '$1').replace(/@\w+/g, '').replace(/\s{2,}/g, ' ').trim()
+}
+
+/** Truncates at the last word boundary at or before maxLen chars. */
+function truncateAtWord(text: string, maxLen = 120): string {
+  if (text.length <= maxLen) return text
+  const cut = text.lastIndexOf(' ', maxLen)
+  return (cut > 0 ? text.slice(0, cut) : text.slice(0, maxLen)) + '…'
+}
+
+/** Sanitizes a title: strip CJK, hashtags, truncate cleanly. */
+function sanitizeTitle(raw: string): string {
+  return truncateAtWord(stripSocialNoise(stripCJK(raw)))
+}
+
 export function formatMessage(article: StoredArticle): string {
   const emoji = CATEGORY_EMOJI[article.category ?? 'general']
-  // Prefer LLM-translated title (no CJK chars), fall back to original
+  // Prefer LLM-translated title (no CJK), fall back to original; always sanitize
   const rawTitle = (article.titleRu && article.titleRu.length > 5)
     ? article.titleRu
     : article.title
-  const title = escapeHtml(rawTitle.trim())
+  const title = escapeHtml(sanitizeTitle(rawTitle))
   const summary = escapeHtml((article.summaryRu ?? 'Краткое содержание недоступно.').trim())
   const sourceName = article.sourceName.split(':').pop() ?? article.sourceName
   const url = cleanUrl(article.url)
