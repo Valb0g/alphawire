@@ -37,10 +37,18 @@ Relevance score (0-10):
 - 1-2: Low relevance (opinion, minor price updates, ads)
 - 0: Not crypto news or spam
 
+Rules for titleRu and summaryRu:
+- Язык вывода: русский.
+- titleRu: переведи заголовок на русский язык (если уже на английском — оставь на английском). Без CJK-символов (китайских/японских/корейских). Максимум 120 символов.
+- summaryRu: 2-3 предложения, максимум 300 символов.
+- Сохраняй точные числа, суммы, версии, названия без изменений.
+- Никаких вводных фраз типа "эксперты считают", "по данным источников", "стратегический сдвиг" и т.п. — только факты.
+
 Return ONLY valid JSON with this exact structure:
 {
   "relevanceScore": <number 0-10>,
   "category": "<security|platform|regulatory|onchain|general>",
+  "titleRu": "<translated title in Russian or English, max 120 chars, no CJK>",
   "summaryRu": "<2-3 sentences in Russian, max 300 characters>",
   "reasoning": "<1 sentence explaining your score in English>"
 }`
@@ -91,9 +99,12 @@ function parseAndValidateLLMResponse(rawText: string): LLMFilterResponse | null 
       return null
     }
 
+    const titleRu = String(parsed['titleRu'] ?? '').trim()
+
     return {
       relevanceScore: score,
       category: category as NewsCategory,
+      titleRu: titleRu || '',
       summaryRu,
       reasoning: String(parsed['reasoning'] ?? ''),
     }

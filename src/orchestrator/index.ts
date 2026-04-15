@@ -106,10 +106,10 @@ async function runFullCycle(): Promise<void> {
         const result = await filterArticleWithLLM(request)
 
         if (result) {
-          updateArticleWithLLMResult(article.id, result.relevanceScore, result.category, result.summaryRu)
+          updateArticleWithLLMResult(article.id, result.relevanceScore, result.category, result.summaryRu, result.titleRu)
           logger.debug(`[${result.relevanceScore}/10] ${article.title.slice(0, 60)}`)
         } else {
-          updateArticleWithLLMResult(article.id, 0, 'general', '')
+          updateArticleWithLLMResult(article.id, 0, 'general', '', '')
         }
 
         // 8s delay between LLM requests (free tier rate limit)

@@ -50,6 +50,7 @@ const CREATE_ARTICLES_TABLE = `
     relevance_score REAL,
     category TEXT CHECK(category IN ('security', 'platform', 'regulatory', 'onchain', 'general')),
     summary_ru TEXT,
+    title_ru TEXT,
     published INTEGER NOT NULL DEFAULT 0 CHECK(published IN (0, 1)),
     llm_processed INTEGER NOT NULL DEFAULT 0 CHECK(llm_processed IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -100,6 +101,14 @@ export function initDatabase(): void {
   db.exec(CREATE_PUBLISH_LOG_TABLE)
   for (const indexSql of CREATE_INDEXES) {
     db.exec(indexSql)
+  }
+
+  // Migrations: add new columns to existing databases
+  const columns = db.prepare(`PRAGMA table_info(articles)`).all() as Array<{ name: string }>
+  const columnNames = new Set(columns.map(c => c.name))
+  if (!columnNames.has('title_ru')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN title_ru TEXT`)
+    logger.info('Migration: added title_ru column')
   }
 
   logger.info(`Database initialized at ${dbPath}`)
@@ -186,7 +195,7 @@ export function getUnprocessedArticles(limit = 50): StoredArticle[] {
     .prepare(`
       SELECT
         id, raw_hash, title, url, source_name, source_type,
-        published_at, content_snippet, relevance_score, category, summary_ru, published, created_at
+        published_at, content_snippet, relevance_score, category, summary_ru, title_ru, published, created_at
       FROM articles
       WHERE llm_processed = 0
       ORDER BY published_at DESC
@@ -205,7 +214,8 @@ export function updateArticleWithLLMResult(
   id: number,
   score: number,
   category: NewsCategory,
-  summaryRu: string
+  summaryRu: string,
+  titleRu: string = ''
 ): void {
   getDb()
     .prepare(`
@@ -214,10 +224,11 @@ export function updateArticleWithLLMResult(
         relevance_score = @score,
         category = @category,
         summary_ru = @summaryRu,
+        title_ru = @titleRu,
         llm_processed = 1
       WHERE id = @id
     `)
-    .run({ score, category, summaryRu, id })
+    .run({ score, category, summaryRu, titleRu, id })
 }
 
 /**
@@ -252,12 +263,15 @@ export function getArticlesToPublish(threshold: number): StoredArticle[] {
     .prepare(`
       SELECT
         id, raw_hash, title, url, source_name, source_type,
-        published_at, content_snippet, relevance_score, category, summary_ru, published, created_at
+        published_at, content_snippet, relevance_score, category, summary_ru, title_ru, published, created_at
       FROM articles
       WHERE
         llm_processed = 1
         AND published = 0
         AND relevance_score >= ?
+        AND LOWER(SUBSTR(title, 1, 80)) NOT IN (
+          SELECT LOWER(SUBSTR(title, 1, 80)) FROM articles WHERE published = 1
+        )
       ORDER BY relevance_score DESC, published_at DESC
       LIMIT 1
     `)
@@ -322,6 +336,7 @@ function mapRowToStoredArticle(row: Record<string, unknown>): StoredArticle {
     relevanceScore: row['relevance_score'] as number | null,
     category: row['category'] as NewsCategory | null,
     summaryRu: row['summary_ru'] as string | null,
+    titleRu: (row['title_ru'] as string | null) ?? null,
     published: (row['published'] as number) === 1,
     createdAt: row['created_at'] as string,
   }

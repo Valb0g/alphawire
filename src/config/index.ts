@@ -26,7 +26,7 @@ export const config: AppConfig = {
   },
   openRouter: {
     apiKey: requireEnv('OPENROUTER_API_KEY'),
-    model: optionalEnv('OPENROUTER_MODEL', 'openrouter/elephant-alpha'),
+    model: optionalEnv('OPENROUTER_MODEL', 'nvidia/nemotron-3-super-120b-a12b:free'),
   },
   cryptoPanic: {
     token: optionalEnv('CRYPTOPANIC_TOKEN', ''),

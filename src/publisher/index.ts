@@ -62,7 +62,11 @@ function escapeHtml(text: string): string {
 
 export function formatMessage(article: StoredArticle): string {
   const emoji = CATEGORY_EMOJI[article.category ?? 'general']
-  const title = escapeHtml(article.title.trim())
+  // Prefer LLM-translated title (no CJK chars), fall back to original
+  const rawTitle = (article.titleRu && article.titleRu.length > 5)
+    ? article.titleRu
+    : article.title
+  const title = escapeHtml(rawTitle.trim())
   const summary = escapeHtml((article.summaryRu ?? 'Краткое содержание недоступно.').trim())
   const sourceName = article.sourceName.split(':').pop() ?? article.sourceName
   const url = cleanUrl(article.url)

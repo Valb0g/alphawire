@@ -37,6 +37,7 @@ export interface StoredArticle {
   relevanceScore: number | null
   category: NewsCategory | null
   summaryRu: string | null
+  titleRu: string | null // Russian/English translated title from LLM
   published: boolean     // Whether pushed to Telegram channel
   createdAt: string      // ISO string
 }
@@ -51,6 +52,7 @@ export interface LLMFilterResponse {
   relevanceScore: number   // 0-10
   category: NewsCategory
   summaryRu: string        // 2-3 sentence Russian summary
+  titleRu: string          // Clean Russian or English title (no CJK/non-Latin chars)
   reasoning: string        // LLM's brief reasoning (not published)
 }
 
