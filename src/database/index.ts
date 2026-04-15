@@ -51,6 +51,7 @@ const CREATE_ARTICLES_TABLE = `
     category TEXT CHECK(category IN ('security', 'platform', 'regulatory', 'onchain', 'general')),
     summary_ru TEXT,
     title_ru TEXT,
+    suppressed INTEGER NOT NULL DEFAULT 0 CHECK(suppressed IN (0, 1)),
     published INTEGER NOT NULL DEFAULT 0 CHECK(published IN (0, 1)),
     llm_processed INTEGER NOT NULL DEFAULT 0 CHECK(llm_processed IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -109,6 +110,10 @@ export function initDatabase(): void {
   if (!columnNames.has('title_ru')) {
     db.exec(`ALTER TABLE articles ADD COLUMN title_ru TEXT`)
     logger.info('Migration: added title_ru column')
+  }
+  if (!columnNames.has('suppressed')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN suppressed INTEGER NOT NULL DEFAULT 0`)
+    logger.info('Migration: added suppressed column')
   }
 
   logger.info(`Database initialized at ${dbPath}`)
@@ -258,26 +263,59 @@ export function markArticleAsPublished(articleId: number, telegramMessageId: num
  * Fetches articles that are LLM-processed, above the relevance threshold,
  * and not yet published to the Telegram channel.
  */
+/**
+ * Returns top-10 publish candidates for the orchestrator to deduplicate.
+ * Excludes: already published, suppressed (duplicates), exact title matches of published articles.
+ */
 export function getArticlesToPublish(threshold: number): StoredArticle[] {
   const rows = getDb()
     .prepare(`
       SELECT
         id, raw_hash, title, url, source_name, source_type,
-        published_at, content_snippet, relevance_score, category, summary_ru, title_ru, published, created_at
+        published_at, content_snippet, relevance_score, category, summary_ru, title_ru, suppressed, published, created_at
       FROM articles
       WHERE
         llm_processed = 1
         AND published = 0
+        AND suppressed = 0
         AND relevance_score >= ?
         AND LOWER(SUBSTR(title, 1, 80)) NOT IN (
           SELECT LOWER(SUBSTR(title, 1, 80)) FROM articles WHERE published = 1
         )
       ORDER BY relevance_score DESC, published_at DESC
-      LIMIT 1
+      LIMIT 10
     `)
     .all(threshold) as Array<Record<string, unknown>>
 
   return rows.map(mapRowToStoredArticle)
+}
+
+/**
+ * Returns titles of articles published in the last N hours.
+ * Used for semantic duplicate detection in the orchestrator.
+ */
+export function getRecentlyPublishedTitles(hoursBack = 6): string[] {
+  const cutoff = new Date(Date.now() - hoursBack * 3600 * 1000).toISOString()
+  const rows = getDb()
+    .prepare(`
+      SELECT title FROM articles
+      WHERE published = 1 AND created_at >= ?
+      ORDER BY created_at DESC
+    `)
+    .all(cutoff) as Array<{ title: string }>
+  return rows.map(r => r.title)
+}
+
+/**
+ * Marks articles as suppressed (duplicate of a published story).
+ * Suppressed articles are excluded from future publish candidates.
+ */
+export function suppressArticles(ids: number[]): void {
+  if (ids.length === 0) return
+  const placeholders = ids.map(() => '?').join(',')
+  getDb()
+    .prepare(`UPDATE articles SET suppressed = 1 WHERE id IN (${placeholders})`)
+    .run(...ids)
 }
 
 /**
@@ -311,7 +349,7 @@ export function cleanupOldArticles(days = 7): number {
       DELETE FROM articles
       WHERE
         created_at < ?
-        AND (published = 1 OR (llm_processed = 1 AND relevance_score < 5))
+        AND (published = 1 OR suppressed = 1 OR (llm_processed = 1 AND relevance_score < 5))
     `).run(cutoff).changes
   })
 
@@ -337,6 +375,7 @@ function mapRowToStoredArticle(row: Record<string, unknown>): StoredArticle {
     category: row['category'] as NewsCategory | null,
     summaryRu: row['summary_ru'] as string | null,
     titleRu: (row['title_ru'] as string | null) ?? null,
+    suppressed: (row['suppressed'] as number) === 1,
     published: (row['published'] as number) === 1,
     createdAt: row['created_at'] as string,
   }

@@ -38,6 +38,7 @@ export interface StoredArticle {
   category: NewsCategory | null
   summaryRu: string | null
   titleRu: string | null // Russian/English translated title from LLM
+  suppressed: boolean    // Duplicate of already-published story, skip forever
   published: boolean     // Whether pushed to Telegram channel
   createdAt: string      // ISO string
 }

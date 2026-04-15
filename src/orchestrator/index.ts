@@ -5,6 +5,8 @@ import {
   getUnprocessedArticles,
   updateArticleWithLLMResult,
   getArticlesToPublish,
+  getRecentlyPublishedTitles,
+  suppressArticles,
   markArticleAsPublished,
   cleanupOldArticles,
   getDatabaseStats,
@@ -23,6 +25,47 @@ import { startHealthServer } from '../health'
 import { config } from '../config/index'
 import { logger } from '../utils/logger'
 import { LLMFilterRequest } from '../types/index'
+
+// ============================================================
+// SEMANTIC DUPLICATE DETECTION
+// ============================================================
+
+// Common English words that don't help identify a unique story
+const DEDUP_STOP_WORDS = new Set([
+  'from', 'with', 'that', 'this', 'have', 'been', 'will', 'about', 'into',
+  'over', 'after', 'before', 'their', 'which', 'would', 'could', 'should',
+  'amid', 'active', 'says', 'says', 'attack', 'platform', 'users', 'funds',
+  'stolen', 'loss', 'more', 'than', 'also', 'just', 'first', 'last', 'new',
+  'what', 'when', 'where', 'they', 'were', 'bitcoin', 'ethereum', 'crypto',
+  'token', 'coins', 'market',
+])
+
+/**
+ * Extracts significant terms from a title for duplicate detection.
+ * Keeps project names, amounts, specific nouns.
+ */
+function extractKeyTerms(title: string): Set<string> {
+  return new Set(
+    title
+      .toLowerCase()
+      .split(/[\s\W]+/)
+      .filter(w => w.length > 3 && !DEDUP_STOP_WORDS.has(w))
+  )
+}
+
+/**
+ * Returns true if two titles likely cover the same story.
+ * Threshold: 2+ shared significant terms.
+ */
+function titlesOverlap(t1: string, t2: string, minShared = 2): boolean {
+  const terms1 = extractKeyTerms(t1)
+  const terms2 = extractKeyTerms(t2)
+  let count = 0
+  for (const term of terms1) {
+    if (terms2.has(term) && ++count >= minShared) return true
+  }
+  return false
+}
 
 // ============================================================
 // ORCHESTRATOR STATE
@@ -127,17 +170,52 @@ async function runFullCycle(): Promise<void> {
       const waitMin = Math.round((MIN_PUBLISH_INTERVAL_MS - timeSinceLast) / 60000)
       logger.info(`Skipping publish — next post in ${waitMin} min`)
     } else {
-      const toPublish = getArticlesToPublish(config.relevanceThreshold)
+      const candidates = getArticlesToPublish(config.relevanceThreshold)
 
-      if (toPublish.length === 0) {
+      if (candidates.length === 0) {
         logger.info('Nothing to publish this cycle')
       } else {
-        const article = toPublish[0]!
-        const msgId = await publishArticle(article)
-        if (msgId !== null) {
-          markArticleAsPublished(article.id, msgId)
-          lastPublishedAt = new Date()
-          logger.info(`Published 1 article. Next post available in ${MIN_PUBLISH_INTERVAL_MS / 60000} min`)
+        // Semantic dedup: get titles published in last 6 hours
+        const recentTitles = getRecentlyPublishedTitles(6)
+
+        // Find the best candidate that isn't a duplicate of a recent story
+        let articleToPublish = null
+        const suppressIds: number[] = []
+
+        for (const candidate of candidates) {
+          const isDupeOfRecent = recentTitles.some(t => titlesOverlap(candidate.title, t))
+          if (isDupeOfRecent) {
+            suppressIds.push(candidate.id)
+          } else if (!articleToPublish) {
+            articleToPublish = candidate
+          }
+        }
+
+        // Also suppress candidates that overlap with the article we're about to publish
+        if (articleToPublish) {
+          for (const c of candidates) {
+            if (c.id !== articleToPublish.id &&
+                !suppressIds.includes(c.id) &&
+                titlesOverlap(c.title, articleToPublish.title)) {
+              suppressIds.push(c.id)
+            }
+          }
+        }
+
+        if (suppressIds.length > 0) {
+          suppressArticles(suppressIds)
+          logger.info(`Suppressed ${suppressIds.length} duplicate articles`)
+        }
+
+        if (!articleToPublish) {
+          logger.info('All candidates are duplicates of recently published stories')
+        } else {
+          const msgId = await publishArticle(articleToPublish)
+          if (msgId !== null) {
+            markArticleAsPublished(articleToPublish.id, msgId)
+            lastPublishedAt = new Date()
+            logger.info(`Published 1 article. Next post in ${MIN_PUBLISH_INTERVAL_MS / 60000} min`)
+          }
         }
       }
     }
