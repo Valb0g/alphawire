@@ -17,6 +17,8 @@ const MAX_CONTENT_LENGTH = 1500
 
 const SYSTEM_PROMPT = `You are a crypto news relevance analyst. Your task is to evaluate a news article and return a structured JSON response.
 
+CRITICAL REQUIREMENT: The fields "titleRu" and "summaryRu" MUST be written in Russian (Cyrillic script). This is mandatory. Do not write them in English, regardless of the article language.
+
 Evaluate the article on the following criteria:
 1. Is it about significant crypto events (hacks, exploits, regulatory actions, major launches/closures, whale movements, important on-chain events)?
 2. Is it factual and newsworthy (not an opinion piece, tutorial, or advertisement)?
@@ -99,6 +101,13 @@ function parseAndValidateLLMResponse(rawText: string): LLMFilterResponse | null 
     const summaryRu = String(parsed['summaryRu'] ?? '').trim()
     if (summaryRu.length < 10) {
       logger.warn(`LLM returned empty summaryRu`)
+      return null
+    }
+
+    // Validate Russian output: must contain at least some Cyrillic characters
+    const hasCyrillic = /[а-яёА-ЯЁ]/.test(summaryRu)
+    if (!hasCyrillic) {
+      logger.warn(`LLM returned summaryRu in non-Russian language: "${summaryRu.substring(0, 80)}"`)
       return null
     }
 
