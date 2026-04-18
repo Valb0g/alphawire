@@ -19,6 +19,7 @@ export const config: AppConfig = {
   telegram: {
     botToken: requireEnv('TELEGRAM_BOT_TOKEN'),
     channelId: requireEnv('TELEGRAM_CHANNEL_ID'),
+    discussionGroupUrl: optionalEnv('TELEGRAM_DISCUSSION_GROUP_URL', ''),
     apiId: parseInt(requireEnv('TELEGRAM_API_ID'), 10),
     apiHash: requireEnv('TELEGRAM_API_HASH'),
     phone: requireEnv('TELEGRAM_PHONE'),
@@ -35,6 +36,7 @@ export const config: AppConfig = {
     path: optionalEnv('DB_PATH', './data/news.db'),
   },
   relevanceThreshold: parseFloat(optionalEnv('RELEVANCE_THRESHOLD', '6')),
+  alphaScoreThreshold: parseFloat(optionalEnv('ALPHA_SCORE_THRESHOLD', '9')),
   intervals: {
     rssMinutes: parseInt(optionalEnv('RSS_INTERVAL_MINUTES', '10'), 10),
     apiMinutes: parseInt(optionalEnv('API_INTERVAL_MINUTES', '10'), 10),

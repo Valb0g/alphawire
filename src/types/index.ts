@@ -38,6 +38,8 @@ export interface StoredArticle {
   category: NewsCategory | null
   summaryRu: string | null
   titleRu: string | null // Russian/English translated title from LLM
+  editorialSummaryRu: string | null
+  discussionQuestion: string | null
   suppressed: boolean    // Duplicate of already-published story, skip forever
   published: boolean     // Whether pushed to Telegram channel
   createdAt: string      // ISO string
@@ -55,6 +57,13 @@ export interface LLMFilterResponse {
   summaryRu: string        // 2-3 sentence Russian summary
   titleRu: string          // Clean Russian or English title (no CJK/non-Latin chars)
   reasoning: string        // LLM's brief reasoning (not published)
+  editorialSummaryRu?: string
+  discussionQuestion?: string
+}
+
+export interface EditorialContent {
+  editorialSummaryRu: string
+  discussionQuestion: string
 }
 
 export interface RssFeedConfig {
@@ -96,6 +105,7 @@ export interface AppConfig {
   telegram: {
     botToken: string
     channelId: string
+    discussionGroupUrl: string
     apiId: number
     apiHash: string
     phone: string
@@ -112,6 +122,7 @@ export interface AppConfig {
     path: string
   }
   relevanceThreshold: number
+  alphaScoreThreshold: number
   intervals: {
     rssMinutes: number
     apiMinutes: number

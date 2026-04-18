@@ -11,6 +11,7 @@ import {
   cleanupOldArticles,
   getDatabaseStats,
   closeDatabase,
+  updateArticleWithEditorial,
 } from '../database/index'
 import { fetchAllRssFeeds } from '../collectors/rss'
 import { fetchAllApiSources } from '../collectors/api'
@@ -19,7 +20,7 @@ import {
   fetchAllTelegramChannels,
   disconnectTelegramClient,
 } from '../collectors/telegram'
-import { filterArticleWithLLM } from '../llm/filter'
+import { filterArticleWithLLM, generateEditorialContent } from '../llm/filter'
 import { initPublisher, publishArticle, sendStatusMessage } from '../publisher/index'
 import { startHealthServer } from '../health'
 import { config } from '../config/index'
@@ -84,7 +85,7 @@ const MIN_PUBLISH_INTERVAL_MS = parseInt(
 // ============================================================
 
 /**
- * Single unified cycle every 10 minutes:
+ * Single unified cycle every 20 minutes:
  * 1. Collect from ALL sources (RSS + API + Telegram) in parallel
  * 2. Run LLM filter on new unprocessed articles
  * 3. If anything scored above threshold → publish
@@ -151,6 +152,15 @@ async function runFullCycle(): Promise<void> {
         if (result) {
           updateArticleWithLLMResult(article.id, result.relevanceScore, result.category, result.summaryRu, result.titleRu)
           logger.debug(`[${result.relevanceScore}/10] ${article.title.slice(0, 60)}`)
+
+          if (result.relevanceScore >= config.alphaScoreThreshold) {
+            logger.info(`Alpha score detected (${result.relevanceScore} >= ${config.alphaScoreThreshold}). Generating editorial content...`)
+            const editorial = await generateEditorialContent(request)
+            if (editorial) {
+              updateArticleWithEditorial(article.id, editorial.editorialSummaryRu, editorial.discussionQuestion)
+              logger.debug(`Editorial content generated for: ${article.title.slice(0, 60)}`)
+            }
+          }
         } else {
           updateArticleWithLLMResult(article.id, 0, 'general', '', '')
         }
@@ -252,7 +262,7 @@ function setupCronJobs(): void {
     logger.info(`Daily cleanup: removed ${removed} old articles`)
   })
 
-  logger.info('Cron scheduled: full cycle every 10 min, cleanup daily at 03:00')
+  logger.info('Cron scheduled: full cycle every 20 min, cleanup daily at 03:00')
 }
 
 // ============================================================

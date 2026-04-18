@@ -3,6 +3,7 @@ import {
   LLMFilterRequest,
   LLMFilterResponse,
   NewsCategory,
+  EditorialContent,
 } from '../types/index'
 import { config } from '../config/index'
 import { logger } from '../utils/logger'
@@ -57,6 +58,27 @@ Return ONLY valid JSON with this exact structure:
   "summaryRu": "<2-3 sentences in Russian, max 300 characters>",
   "reasoning": "<1 sentence explaining your score in English>"
 }`
+
+const EDITORIAL_SYSTEM_PROMPT = `You are an expert crypto analyst running a high-quality Telegram channel.
+You need to write an editorial summary and a discussion question for a highly important crypto news article (score >= 9).
+
+Return ONLY valid JSON with this exact structure:
+{
+  "editorialSummaryRu": "<Your insightful, engaging summary with character and slight irony. Russian language. 3-4 sentences.>",
+  "discussionQuestion": "<A provocative, engaging question to ask the audience to start a discussion in comments. Russian language.>"
+}
+
+Rules for editorialSummaryRu:
+- Be serious about facts but add character and slight irony.
+- No journalistic clichés. Write like a smart, experienced trader/builder pointing out what's really going on.
+- Must be entirely in Russian, keeping specific crypto terms in English if appropriate.
+- Example tone: 'Атакующий эксплойтнул уязвимость в мосте Wormhole... Очередной bridge exploit — классика жанра.'
+- DO NOT just repeat the basic summary. Add that characteristic 'flavor'.
+
+Rules for discussionQuestion:
+- Keep it short, slightly provocative.
+- Make people want to reply.
+- Must be in Russian.`
 
 function buildUserPrompt(request: LLMFilterRequest): string {
   const truncatedContent = request.content.substring(0, MAX_CONTENT_LENGTH)
@@ -215,6 +237,104 @@ export async function filterArticleWithLLM(
 
       if (attempt < retries) {
         logger.info(`Retrying LLM call (attempt ${attempt + 1}/${retries})...`)
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Validates and sanitizes the LLM response JSON for editorial content.
+ */
+function parseAndValidateEditorialResponse(rawText: string): EditorialContent | null {
+  try {
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      logger.warn(`LLM editorial response contains no JSON: ${rawText.substring(0, 200)}`)
+      return null
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+
+    const editorialSummaryRu = String(parsed['editorialSummaryRu'] ?? '').trim()
+    const discussionQuestion = String(parsed['discussionQuestion'] ?? '').trim()
+
+    if (editorialSummaryRu.length < 10 || discussionQuestion.length < 5) {
+      logger.warn(`LLM returned empty editorial content`)
+      return null
+    }
+
+    return {
+      editorialSummaryRu,
+      discussionQuestion,
+    }
+  } catch (error) {
+    logger.warn(`Failed to parse LLM editorial response JSON: ${error}`)
+    return null
+  }
+}
+
+/**
+ * Generates editorial content for alpha articles (score >= 9).
+ */
+export async function generateEditorialContent(
+  request: LLMFilterRequest,
+  retries = 1
+): Promise<EditorialContent | null> {
+  const requestBody: OpenRouterRequest = {
+    model: config.openRouter.model,
+    messages: [
+      { role: 'system', content: EDITORIAL_SYSTEM_PROMPT },
+      { role: 'user', content: buildUserPrompt(request) },
+    ],
+    temperature: 0.7,  // Higher temperature for more creative/editorial responses
+    max_tokens: 800,
+  }
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response: AxiosResponse<OpenRouterResponse> = await axios.post(
+        OPENROUTER_API_URL,
+        requestBody,
+        {
+          headers: {
+            'Authorization': `Bearer ${config.openRouter.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://github.com/Valb0g/alphawire',
+            'X-Title': 'AlphaWire',
+          },
+          timeout: 60000,
+        }
+      )
+
+      const content = response.data?.choices?.[0]?.message?.content
+      if (!content) {
+        logger.warn(`LLM returned empty editorial content for: ${request.title.substring(0, 50)}`)
+        continue
+      }
+
+      const result = parseAndValidateEditorialResponse(content)
+      if (result) {
+        logger.debug(
+          `Generated editorial content for: "${request.title.substring(0, 50)}"`
+        )
+        return result
+      }
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status
+        logger.error(`LLM API error (status ${status}): ${error.message}`)
+        if (status && status >= 400 && status < 500) {
+          return null
+        }
+      } else {
+        logger.error(`LLM unexpected error: ${error}`)
+      }
+
+      if (attempt < retries) {
+        logger.info(`Retrying LLM editorial call (attempt ${attempt + 1}/${retries})...`)
         await new Promise(resolve => setTimeout(resolve, 3000))
       }
     }

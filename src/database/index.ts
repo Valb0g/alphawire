@@ -51,6 +51,8 @@ const CREATE_ARTICLES_TABLE = `
     category TEXT CHECK(category IN ('security', 'platform', 'regulatory', 'onchain', 'general')),
     summary_ru TEXT,
     title_ru TEXT,
+    editorial_summary_ru TEXT,
+    discussion_question TEXT,
     suppressed INTEGER NOT NULL DEFAULT 0 CHECK(suppressed IN (0, 1)),
     published INTEGER NOT NULL DEFAULT 0 CHECK(published IN (0, 1)),
     llm_processed INTEGER NOT NULL DEFAULT 0 CHECK(llm_processed IN (0, 1)),
@@ -110,6 +112,14 @@ export function initDatabase(): void {
   if (!columnNames.has('title_ru')) {
     db.exec(`ALTER TABLE articles ADD COLUMN title_ru TEXT`)
     logger.info('Migration: added title_ru column')
+  }
+  if (!columnNames.has('editorial_summary_ru')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN editorial_summary_ru TEXT`)
+    logger.info('Migration: added editorial_summary_ru column')
+  }
+  if (!columnNames.has('discussion_question')) {
+    db.exec(`ALTER TABLE articles ADD COLUMN discussion_question TEXT`)
+    logger.info('Migration: added discussion_question column')
   }
   if (!columnNames.has('suppressed')) {
     db.exec(`ALTER TABLE articles ADD COLUMN suppressed INTEGER NOT NULL DEFAULT 0`)
@@ -200,7 +210,9 @@ export function getUnprocessedArticles(limit = 50): StoredArticle[] {
     .prepare(`
       SELECT
         id, raw_hash, title, url, source_name, source_type,
-        published_at, content_snippet, relevance_score, category, summary_ru, title_ru, published, created_at
+        published_at, content_snippet, relevance_score, category,
+        summary_ru, title_ru, editorial_summary_ru, discussion_question,
+        published, created_at
       FROM articles
       WHERE llm_processed = 0
       ORDER BY published_at DESC
@@ -234,6 +246,25 @@ export function updateArticleWithLLMResult(
       WHERE id = @id
     `)
     .run({ score, category, summaryRu, titleRu, id })
+}
+
+/**
+ * Updates an article with editorial content.
+ */
+export function updateArticleWithEditorial(
+  id: number,
+  editorialSummaryRu: string,
+  discussionQuestion: string
+): void {
+  getDb()
+    .prepare(`
+      UPDATE articles
+      SET
+        editorial_summary_ru = @editorialSummaryRu,
+        discussion_question = @discussionQuestion
+      WHERE id = @id
+    `)
+    .run({ editorialSummaryRu, discussionQuestion, id })
 }
 
 /**
@@ -272,7 +303,9 @@ export function getArticlesToPublish(threshold: number): StoredArticle[] {
     .prepare(`
       SELECT
         id, raw_hash, title, url, source_name, source_type,
-        published_at, content_snippet, relevance_score, category, summary_ru, title_ru, suppressed, published, created_at
+        published_at, content_snippet, relevance_score, category,
+        summary_ru, title_ru, editorial_summary_ru, discussion_question,
+        suppressed, published, created_at
       FROM articles
       WHERE
         llm_processed = 1
@@ -375,6 +408,8 @@ function mapRowToStoredArticle(row: Record<string, unknown>): StoredArticle {
     category: row['category'] as NewsCategory | null,
     summaryRu: row['summary_ru'] as string | null,
     titleRu: (row['title_ru'] as string | null) ?? null,
+    editorialSummaryRu: (row['editorial_summary_ru'] as string | null) ?? null,
+    discussionQuestion: (row['discussion_question'] as string | null) ?? null,
     suppressed: (row['suppressed'] as number) === 1,
     published: (row['published'] as number) === 1,
     createdAt: row['created_at'] as string,

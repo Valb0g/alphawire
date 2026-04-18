@@ -90,10 +90,22 @@ export function formatMessage(article: StoredArticle): string {
     ? article.titleRu
     : article.title
   const title = escapeHtml(sanitizeTitle(rawTitle))
-  const summary = escapeHtml((article.summaryRu ?? 'Краткое содержание недоступно.').trim())
   const sourceName = article.sourceName.split(':').pop() ?? article.sourceName
   const url = cleanUrl(article.url)
 
+  if (article.editorialSummaryRu && article.discussionQuestion) {
+    const summary = escapeHtml(article.editorialSummaryRu.trim())
+    const question = escapeHtml(article.discussionQuestion.trim())
+    
+    let message = `🚨${emoji} ${title}\n\n${summary}\n\n💬 ${question}\n\n🔗 <a href="${url}">${escapeHtml(sourceName)}</a>`
+    if (message.length > TELEGRAM_MAX_LENGTH) {
+      const truncatedSummary = escapeHtml(article.editorialSummaryRu.trim().substring(0, TELEGRAM_MAX_LENGTH - 300) + '...')
+      message = `🚨${emoji} ${title}\n\n${truncatedSummary}\n\n💬 ${question}\n\n🔗 <a href="${url}">${escapeHtml(sourceName)}</a>`
+    }
+    return message
+  }
+
+  const summary = escapeHtml((article.summaryRu ?? 'Краткое содержание недоступно.').trim())
   const message = `${emoji} ${title}\n\n${summary}\n\n🔗 <a href="${url}">${escapeHtml(sourceName)}</a>`
 
   if (message.length > TELEGRAM_MAX_LENGTH) {
@@ -124,12 +136,17 @@ export async function publishArticle(article: StoredArticle): Promise<number | n
   const messageText = formatMessage(article)
 
   try {
+    const replyMarkup = (article.editorialSummaryRu && config.telegram.discussionGroupUrl)
+      ? { inline_keyboard: [[{ text: '💬 Обсудить', url: config.telegram.discussionGroupUrl }]] }
+      : undefined
+
     const sentMessage = await bot.telegram.sendMessage(
       config.telegram.channelId,
       messageText,
       {
         parse_mode: 'HTML',
         link_preview_options: { is_disabled: true },
+        reply_markup: replyMarkup
       }
     )
 
