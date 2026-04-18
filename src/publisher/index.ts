@@ -94,8 +94,8 @@ export function formatMessage(article: StoredArticle): string {
   const url = cleanUrl(article.url)
 
   if (article.editorialSummaryRu && article.discussionQuestion) {
-    const summary = escapeHtml(article.editorialSummaryRu.trim())
-    const question = escapeHtml(article.discussionQuestion.trim())
+    const summary = escapeHtml(stripCJK(article.editorialSummaryRu.trim()))
+    const question = escapeHtml(stripCJK(article.discussionQuestion.trim()))
     
     let message = `🚨${emoji} ${title}\n\n${summary}\n\n💬 ${question}\n\n🔗 <a href="${url}">${escapeHtml(sourceName)}</a>`
     if (message.length > TELEGRAM_MAX_LENGTH) {

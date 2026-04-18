@@ -32,12 +32,13 @@ Categories:
 - "onchain": whale movements, large transfers, on-chain analytics, liquidations, unusual on-chain activity
 - "general": important crypto news that doesn't fit the above (market crashes, major partnerships, bitcoin ETF, macro events)
 
-Relevance score (0-10):
-- 9-10: Critical breaking news (major hack >$10M, major regulatory ban, exchange collapse)
-- 7-8: Important news (significant hack <$10M, new regulations, major protocol launch)
-- 5-6: Notable but not urgent (medium whale moves, smaller platform news)
-- 3-4: Minor news (small updates, minor platform changes)
-- 1-2: Low relevance (opinion, minor price updates, ads)
+Relevance score (0-10). Be strict — most articles should score 5-7. Reserve 9-10 for truly catastrophic events.
+- 10: Once-in-a-year level event: exchange collapse (FTX-scale), $500M+ hack, major country-wide crypto ban
+- 9: Major hack >$50M, top-5 exchange or protocol critical failure, systemic risk to DeFi
+- 7-8: Significant hack $5M–$50M, important regulatory action, major protocol launch/upgrade
+- 5-6: Notable news: smaller hacks <$5M, whale movements, platform updates, regulatory filings
+- 3-4: Minor news: small updates, minor partnerships, low-impact regulatory news
+- 1-2: Low relevance: opinion pieces, minor price updates, ads, tutorials
 - 0: Not crypto news or spam
 
 Rules for titleRu and summaryRu:
@@ -59,26 +60,33 @@ Return ONLY valid JSON with this exact structure:
   "reasoning": "<1 sentence explaining your score in English>"
 }`
 
-const EDITORIAL_SYSTEM_PROMPT = `You are an expert crypto analyst running a high-quality Telegram channel.
-You need to write an editorial summary and a discussion question for a highly important crypto news article (score >= 9).
+const EDITORIAL_SYSTEM_PROMPT = `You are a senior crypto analyst writing for a professional Telegram channel.
+Your task: write an expanded analytical summary and a discussion question for a critical crypto news article.
+
+CRITICAL REQUIREMENT: Both fields MUST be written entirely in Russian (Cyrillic script). No exceptions.
+No CJK characters (Chinese/Japanese/Korean). No hybrid words mixing Russian and non-Russian letters inside one word.
 
 Return ONLY valid JSON with this exact structure:
 {
-  "editorialSummaryRu": "<Your insightful, engaging summary with character and slight irony. Russian language. 3-4 sentences.>",
-  "discussionQuestion": "<A provocative, engaging question to ask the audience to start a discussion in comments. Russian language.>"
+  "editorialSummaryRu": "<3-4 sentences in Russian. Factual, analytical, professional.>",
+  "discussionQuestion": "<1 concise question in Russian to spark discussion.>"
 }
 
 Rules for editorialSummaryRu:
-- Be serious about facts but add character and slight irony.
-- No journalistic clichés. Write like a smart, experienced trader/builder pointing out what's really going on.
-- Must be entirely in Russian, keeping specific crypto terms in English if appropriate.
-- Example tone: 'Атакующий эксплойтнул уязвимость в мосте Wormhole... Очередной bridge exploit — классика жанра.'
-- DO NOT just repeat the basic summary. Add that characteristic 'flavor'.
+- Tone: professional and analytical — like a senior researcher or experienced builder, not a journalist or blogger.
+- No sarcasm, no irony, no informal language ("джентльмен", "казино", "арт-объект").
+- Do NOT editorialize: no "what's really going on", no conspiracy framing, no rhetorical flourishes.
+- Expand beyond the basic facts: add context (e.g. attack vector details, what was and wasn't affected, what happens next).
+- Preserve exact numbers, names, amounts unchanged.
+- Good example: "Эксплойт в Hyperbridge gateway-контракте на Ethereum позволил атакующему создать 1B DOT. Основная сеть Polkadot не затронута — уязвимость была изолирована в bridge-контракте. CertiK зафиксировал аномальные транзакции; bridge приостановлен до выхода патча. Это четвёртый крупный bridge exploit в 2025 году."
+- Bad example: "Атакующий просто взял и минтанул... Polkadot, как истинный джентльмен, заявляет..." — никогда так не писать.
 
 Rules for discussionQuestion:
-- Keep it short, slightly provocative.
-- Make people want to reply.
-- Must be in Russian.`
+- One short, genuine question that invites a professional discussion.
+- Not rhetorical, not leading. Real question with no obvious answer.
+- Russian only. Max 120 characters.
+- Good example: "Можно ли вообще сделать cross-chain bridge безопасным, или это структурно нерешаемая задача?"
+- Bad example: "Зачем вообще доверять этим мошенникам?" — никогда так не писать.`
 
 function buildUserPrompt(request: LLMFilterRequest): string {
   const truncatedContent = request.content.substring(0, MAX_CONTENT_LENGTH)
@@ -266,6 +274,19 @@ function parseAndValidateEditorialResponse(rawText: string): EditorialContent | 
       return null
     }
 
+    // Must be in Russian
+    if (!/[а-яёА-ЯЁ]/.test(editorialSummaryRu)) {
+      logger.warn(`Editorial summaryRu is not in Russian: "${editorialSummaryRu.substring(0, 80)}"`)
+      return null
+    }
+
+    // Must not contain CJK characters
+    const cjkPattern = /[\u2E80-\u2EFF\u3000-\u9FFF\uF900-\uFAFF]/
+    if (cjkPattern.test(editorialSummaryRu) || cjkPattern.test(discussionQuestion)) {
+      logger.warn(`Editorial content contains CJK characters — retrying`)
+      return null
+    }
+
     return {
       editorialSummaryRu,
       discussionQuestion,
@@ -289,7 +310,7 @@ export async function generateEditorialContent(
       { role: 'system', content: EDITORIAL_SYSTEM_PROMPT },
       { role: 'user', content: buildUserPrompt(request) },
     ],
-    temperature: 0.7,  // Higher temperature for more creative/editorial responses
+    temperature: 0.3,  // Moderate temperature for analytical but consistent output
     max_tokens: 800,
   }
 
