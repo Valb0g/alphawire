@@ -141,7 +141,13 @@ function parseAndValidateLLMResponse(rawText: string): LLMFilterResponse | null 
       return null
     }
 
+    // Reject CJK characters in summaryRu or titleRu → triggers retry
+    const cjkPattern = /[\u2E80-\u2EFF\u3000-\u9FFF\uF900-\uFAFF]/
     const titleRu = String(parsed['titleRu'] ?? '').trim()
+    if (cjkPattern.test(summaryRu) || cjkPattern.test(titleRu)) {
+      logger.warn(`LLM returned CJK chars in summaryRu/titleRu — retrying`)
+      return null
+    }
 
     return {
       relevanceScore: score,

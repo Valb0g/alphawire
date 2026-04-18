@@ -105,7 +105,7 @@ export function formatMessage(article: StoredArticle): string {
     return message
   }
 
-  const summary = escapeHtml((article.summaryRu ?? 'Краткое содержание недоступно.').trim())
+  const summary = escapeHtml(stripCJK((article.summaryRu ?? 'Краткое содержание недоступно.').trim()))
   const message = `${emoji} ${title}\n\n${summary}\n\n🔗 <a href="${url}">${escapeHtml(sourceName)}</a>`
 
   if (message.length > TELEGRAM_MAX_LENGTH) {
