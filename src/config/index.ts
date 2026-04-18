@@ -35,7 +35,7 @@ export const config: AppConfig = {
   database: {
     path: optionalEnv('DB_PATH', './data/news.db'),
   },
-  relevanceThreshold: parseFloat(optionalEnv('RELEVANCE_THRESHOLD', '6')),
+  relevanceThreshold: parseFloat(optionalEnv('RELEVANCE_THRESHOLD', '7')),
   alphaScoreThreshold: parseFloat(optionalEnv('ALPHA_SCORE_THRESHOLD', '9')),
   intervals: {
     rssMinutes: parseInt(optionalEnv('RSS_INTERVAL_MINUTES', '10'), 10),

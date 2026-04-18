@@ -75,10 +75,25 @@ function titlesOverlap(t1: string, t2: string, minShared = 2): boolean {
 let isCycleRunning = false
 let lastPublishedAt: Date | null = null
 
-// Minimum interval between posts (ms)
+// Minimum interval between posts (ms) — 3 hours default
 const MIN_PUBLISH_INTERVAL_MS = parseInt(
-  process.env.MIN_PUBLISH_INTERVAL_MINUTES ?? '60'
+  process.env.MIN_PUBLISH_INTERVAL_MINUTES ?? '180'
 ) * 60 * 1000
+
+// Quiet hours in Moscow time (UTC+3) — no publishing during these hours.
+// Collection and LLM filtering continue; only publish step is skipped.
+const QUIET_HOURS_START = parseInt(process.env.QUIET_HOURS_START ?? '23', 10)
+const QUIET_HOURS_END = parseInt(process.env.QUIET_HOURS_END ?? '7', 10)
+const QUIET_HOURS_TZ_OFFSET = parseInt(process.env.QUIET_HOURS_TZ_OFFSET ?? '3', 10)
+
+function isQuietHours(): boolean {
+  const hour = (new Date().getUTCHours() + QUIET_HOURS_TZ_OFFSET + 24) % 24
+  // Start > end means wraparound midnight (e.g. 23..7)
+  if (QUIET_HOURS_START > QUIET_HOURS_END) {
+    return hour >= QUIET_HOURS_START || hour < QUIET_HOURS_END
+  }
+  return hour >= QUIET_HOURS_START && hour < QUIET_HOURS_END
+}
 
 // ============================================================
 // FULL PIPELINE (collect -> llm -> publish)
@@ -170,13 +185,15 @@ async function runFullCycle(): Promise<void> {
       }
     }
 
-    // Step 3: Publish — enforce minimum interval between posts
+    // Step 3: Publish — enforce minimum interval and quiet hours
     const now = new Date()
     const timeSinceLast = lastPublishedAt
       ? now.getTime() - lastPublishedAt.getTime()
       : Infinity
 
-    if (timeSinceLast < MIN_PUBLISH_INTERVAL_MS) {
+    if (isQuietHours()) {
+      logger.info(`Skipping publish — quiet hours (${QUIET_HOURS_START}:00–${QUIET_HOURS_END}:00 MSK)`)
+    } else if (timeSinceLast < MIN_PUBLISH_INTERVAL_MS) {
       const waitMin = Math.round((MIN_PUBLISH_INTERVAL_MS - timeSinceLast) / 60000)
       logger.info(`Skipping publish — next post in ${waitMin} min`)
     } else {
